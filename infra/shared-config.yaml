@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  namespace: app-workload
+type: Opaque
+stringData:
+  # In real prod, use ExternalSecrets or SealedSecrets
+  valkey-password: "securepassword123"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: app-workload
+data:
+  nats-url: "nats://nats.app-workload.svc:4222"
+  valkey-host: "valkey-redis-master.app-workload.svc"

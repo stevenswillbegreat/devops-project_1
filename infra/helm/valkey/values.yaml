@@ -1,0 +1,17 @@
+architecture: replication
+auth:
+  enabled: true
+  password: "securepassword123" # In production, use Secrets
+master:
+  persistence:
+    enabled: true
+    size: 1Gi
+replica:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    size: 1Gi
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false # We will enable this after installing Prometheus

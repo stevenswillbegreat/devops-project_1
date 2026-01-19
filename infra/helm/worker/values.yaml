@@ -1,0 +1,13 @@
+replicaCount: 2
+image:
+  repository: cuegrowth-worker
+  tag: "v1"
+  pullPolicy: IfNotPresent 
+
+resources: # [cite: 33]
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

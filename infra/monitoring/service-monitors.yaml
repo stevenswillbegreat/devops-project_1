@@ -1,0 +1,36 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: worker-monitor
+  namespace: monitoring # Monitor must be in monitoring namespace (usually)
+  labels:
+    release: monitoring # Must match the Prometheus Operator release label
+spec:
+  selector:
+    matchLabels:
+      app: worker # Matches our Worker Pod labels
+  namespaceSelector:
+    matchNames:
+      - app-workload
+  endpoints:
+  - port: http # Make sure your Worker service.yaml names the port 'http' or use number
+    targetPort: 8000
+    path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nats-monitor
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats # Standard NATS chart label
+  namespaceSelector:
+    matchNames:
+      - app-workload
+  endpoints:
+  - port: metrics
+    path: /metrics

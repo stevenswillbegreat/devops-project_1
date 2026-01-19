@@ -1,0 +1,15 @@
+config:
+  cluster:
+    enabled: true
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        enabled: true
+        size: 1Gi
+auth:
+  enabled: true
+  user: "admin"
+  password: "queuepassword123"
+metrics:
+  enabled: true

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: app-workload
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}
+    spec:
+      securityContext: # [cite: 32]
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 2000
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NATS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: nats-url
+            - name: VALKEY_HOST
+              value: {{ .Values.env.valkeyHost | quote }}
+            - name: VALKEY_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets # [cite: 77]
+                  key: valkey-password
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe: # [cite: 34]
+            httpGet:
+              path: /stats
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe: # [cite: 34]
+            httpGet:
+              path: /stats
+              port: 8080
+            initialDelaySeconds: 5
