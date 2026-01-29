@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cuegrowth-stack
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+    targetRevision: main
+    path: infra/helm # ArgoCD will look for Chart.yaml here or subcharts
+    # Since you have multiple charts (api, worker), a common pattern is 
+    # a "parent" chart or deploying them individually. 
+    # For simplicity, let's create a "parent" chart or just deploy the API for now.
+    # Below works if you create a parent chart at infra/helm/
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-workload
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
