@@ -13,7 +13,7 @@ spec:
       labels:
         app: {{ .Chart.Name }}
     spec:
-      securityContext: # [cite: 32]
+      securityContext:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 2000
@@ -34,17 +34,17 @@ spec:
             - name: VALKEY_PASS
               valueFrom:
                 secretKeyRef:
-                  name: app-secrets # [cite: 77]
+                  name: app-secrets
                   key: valkey-password
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          livenessProbe: # [cite: 34]
+          livenessProbe:
             httpGet:
               path: /stats
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
-          readinessProbe: # [cite: 34]
+          readinessProbe:
             httpGet:
               path: /stats
               port: 8080

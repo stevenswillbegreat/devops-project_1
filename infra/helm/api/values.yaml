@@ -8,7 +8,7 @@ env:
   natsUrl: "nats://nats.app-workload.svc:4222"
   valkeyHost: "valkey-redis-master.app-workload.svc"
 
-resources: # [cite: 33]
+resources:
   requests:
     cpu: 100m
     memory: 128Mi

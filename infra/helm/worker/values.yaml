@@ -4,7 +4,7 @@ image:
   tag: "v1"
   pullPolicy: IfNotPresent 
 
-resources: # [cite: 33]
+resources:
   requests:
     cpu: 100m
     memory: 128Mi

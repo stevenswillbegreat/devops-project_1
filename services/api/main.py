@@ -42,7 +42,7 @@ async def create_task(task: Task):
         raise HTTPException(status_code=503, detail="Queue not available")
     
     try:
-        # Push JSON payload into queue [cite: 61]
+        # Push JSON payload into queue
         data = json.dumps(task.payload).encode()
         await nc.publish(QUEUE_SUBJECT, data)
         return {"status": "queued", "payload": task.payload}

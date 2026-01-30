@@ -27,7 +27,7 @@ async def message_handler(msg):
         # Simulate Processing
         result = {"status": "completed", "original_data": data}
         
-        # Store result in Valkey [cite: 71]
+        # Store result in Valkey
         # We use a random key or ID from payload if it exists
         key = f"task:{os.urandom(4).hex()}"
         r.set(key, json.dumps(result))
@@ -35,7 +35,7 @@ async def message_handler(msg):
         # Update metrics
         TASKS_PROCESSED.inc()
         
-        # Also increment a global counter in Valkey for the API /stats endpoint to read [cite: 67]
+        # Also increment a global counter in Valkey for the API /stats endpoint to read
         r.incr("metric_processed_count")
         
     except Exception as e:
@@ -51,7 +51,7 @@ async def run():
     print(f"Worker connected to NATS at {NATS_URL}")
 
     # Subscribe to queue
-    # Using a queue group 'workers' ensures load balancing if we scale up pods [cite: 35]
+    # Using a queue group 'workers' ensures load balancing if we scale up pods
     await nc.subscribe(QUEUE_SUBJECT, queue="workers", cb=message_handler)
 
     # Keep running until signal

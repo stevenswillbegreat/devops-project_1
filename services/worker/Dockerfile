@@ -8,7 +8,7 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 FROM python:3.11-slim
 WORKDIR /app
 
-# Create non-root user [cite: 32]
+# Create non-root user
 RUN adduser --disabled-password --gecos '' appuser
 USER appuser
 
@@ -18,6 +18,6 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 
 COPY . .
 
-# Worker exposes 8000 for Prometheus metrics [cite: 72]
+# Worker exposes 8000 for Prometheus metrics
 EXPOSE 8000
 CMD ["python", "main.py"]

@@ -8,7 +8,7 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 FROM python:3.11-slim
 WORKDIR /app
 
-# Create non-root user [cite: 32]
+# Create non-root user
 RUN adduser --disabled-password --gecos '' appuser
 USER appuser
 
