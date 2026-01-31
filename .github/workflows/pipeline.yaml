@@ -37,7 +37,7 @@ jobs:
       - name: Build Worker Image
         run: docker build -t cuegrowth-worker:${{ github.sha }} ./services/worker
 
-      # 3. Security Scan (Trivy) [cite: 85]
+      # 3. Security Scan (Trivy)
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
