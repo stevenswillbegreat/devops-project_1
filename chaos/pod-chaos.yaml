@@ -1,0 +1,54 @@
+---
+# Pod Kill Chaos
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-worker
+  namespace: app-workload
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: worker
+  scheduler:
+    cron: "@every 10m"
+
+---
+# Pod Failure Chaos (makes pod unavailable without killing)
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-api
+  namespace: app-workload
+spec:
+  action: pod-failure
+  mode: one
+  duration: "30s"
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: api
+
+---
+# Container Kill Chaos
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: container-kill
+  namespace: app-workload
+spec:
+  action: container-kill
+  mode: one
+  containerNames:
+    - worker
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: worker
+  scheduler:
+    cron: "@every 15m"

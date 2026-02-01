@@ -17,10 +17,21 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 2000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1000
           ports:
             - containerPort: 8080
           env:
@@ -49,3 +60,4 @@ spec:
               path: /stats
               port: 8080
             initialDelaySeconds: 5
+            periodSeconds: 10

@@ -1,0 +1,67 @@
+---
+# Network Delay Chaos
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-worker
+  namespace: app-workload
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: worker
+  delay:
+    latency: "100ms"
+    correlation: "25"
+    jitter: "10ms"
+  duration: "30s"
+  scheduler:
+    cron: "@every 5m"
+
+---
+# Network Loss Chaos
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-loss-api
+  namespace: app-workload
+spec:
+  action: loss
+  mode: one
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: api
+  loss:
+    loss: "10"
+    correlation: "25"
+  duration: "30s"
+
+---
+# Network Partition Chaos
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition
+  namespace: app-workload
+spec:
+  action: partition
+  mode: one
+  selector:
+    namespaces:
+      - app-workload
+    labelSelectors:
+      app: worker
+  direction: to
+  target:
+    mode: one
+    selector:
+      namespaces:
+        - app-workload
+      labelSelectors:
+        app: nats
+  duration: "20s"

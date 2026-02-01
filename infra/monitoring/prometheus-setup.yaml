@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+
+---
+# Add Prometheus Helm repo and install
+# helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# helm repo update
+# helm install prometheus prometheus-community/kube-prometheus-stack \
+#   --namespace monitoring \
+#   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+#   --set grafana.adminPassword=admin123

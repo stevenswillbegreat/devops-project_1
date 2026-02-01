@@ -51,24 +51,20 @@ async def create_task(task: Task):
 
 @app.get("/stats")
 async def get_stats():
-    # Returns Valkey keys, Queue backlog, Worker processed count 
     try:
-        # 1. Valkey Key Count
-        valkey_keys = r.dbsize()
+        # 1. Valkey keys count
+        valkey_keys_count = r.dbsize()
         
-        # 2. Worker Processed Count (Retrieved from a counter in Valkey)
-        processed_count = r.get("metric_processed_count") or 0
+        # 2. Queue backlog length
+        queue_backlog_length = r.get("queue_backlog_length") or 0
         
-        # 3. Queue Backlog (Approximation via NATS JetStream or simplified for NATS Core)
-        # Note: NATS Core doesn't easily expose "queue depth" without JetStream monitoring. 
-        # For this test, we might mock it or check a specific "backlog" metric if exposed.
-        # We will simply return "N/A" for NATS Core or use the JS manager if upgraded.
-        queue_depth = "monitoring_dependent" 
+        # 3. Worker processed count
+        worker_processed_count = r.get("worker_processed_total") or 0
 
         return {
-            "valkey_keys": valkey_keys,
-            "processed_count": int(processed_count),
-            "queue_status": "active" if nc and nc.is_connected else "disconnected"
+            "valkey_keys_count": valkey_keys_count,
+            "queue_backlog_length": int(queue_backlog_length),
+            "worker_processed_count": int(worker_processed_count)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
