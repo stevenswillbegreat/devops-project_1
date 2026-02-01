@@ -1,0 +1,42 @@
+# OVH Development Values
+replicaCount: 1
+
+image:
+  repository: ghcr.io/stevenswillbegreat/devops-project_1-api
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: api.dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+nodeSelector:
+  node-type: development
+
+env:
+  - name: ENVIRONMENT
+    value: "development"
+  - name: LOG_LEVEL
+    value: "DEBUG"
+  - name: NATS_URL
+    value: "nats://nats.app-workload.svc:4222"

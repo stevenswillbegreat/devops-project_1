@@ -1,0 +1,134 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: multi-cloud
+  namespace: argocd
+spec:
+  description: Multi-cloud microservices project
+  sourceRepos:
+  - 'https://github.com/stevenswillbegreat/devops-project_1.git'
+  destinations:
+  - namespace: 'app-workload'
+    server: https://kubernetes.default.svc
+  - namespace: 'observability'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'networking.k8s.io'
+    kind: NetworkPolicy
+  namespaceResourceWhitelist:
+  - group: 'apps'
+    kind: Deployment
+  - group: ''
+    kind: Service
+  - group: 'networking.k8s.io'
+    kind: Ingress
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-aws-prod
+  namespace: argocd
+  labels:
+    environment: production
+    cloud: aws
+spec:
+  project: multi-cloud
+  source:
+    repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+    targetRevision: main
+    path: infra/helm/api
+    helm:
+      valueFiles:
+      - values-aws-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-workload
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-hetzner-staging
+  namespace: argocd
+  labels:
+    environment: staging
+    cloud: hetzner
+spec:
+  project: multi-cloud
+  source:
+    repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+    targetRevision: main
+    path: infra/helm/api
+    helm:
+      valueFiles:
+      - values-hetzner-staging.yaml
+  destination:
+    server: https://hetzner-cluster-endpoint
+    namespace: app-workload
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-ovh-dev
+  namespace: argocd
+  labels:
+    environment: development
+    cloud: ovh
+spec:
+  project: multi-cloud
+  source:
+    repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+    targetRevision: main
+    path: infra/helm/api
+    helm:
+      valueFiles:
+      - values-ovh-dev.yaml
+  destination:
+    server: https://ovh-cluster-endpoint
+    namespace: app-workload
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-stack
+  namespace: argocd
+spec:
+  project: multi-cloud
+  source:
+    repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+    targetRevision: main
+    path: infra/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

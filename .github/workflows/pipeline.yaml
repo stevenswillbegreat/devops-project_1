@@ -6,14 +6,23 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: stevenswillbegreat/devops-project_1
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 1. Run Tests 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -27,38 +36,139 @@ jobs:
       - name: Run Unit Tests
         run: |
           cd services/api
-          # We run pytest (ignoring NATS connection errors for unit tests)
           PYTHONPATH=. pytest || echo "Tests passed with warnings"
 
-      # 2. Build Docker Images [cite: 84]
-      - name: Build API Image
-        run: docker build -t cuegrowth-api:${{ github.sha }} ./services/api
-      
-      - name: Build Worker Image
-        run: docker build -t cuegrowth-worker:${{ github.sha }} ./services/worker
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. Security Scan (Trivy)
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push API image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/api
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/worker
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+
       - name: Run Trivy Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'cuegrowth-api:${{ github.sha }}'
-          format: 'table'
-          exit-code: '0' # Warning only (set to 1 to fail build on high severities)
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
-  # 4. Deploy Stage (Simulated for Local Kind) [cite: 86]
-  deploy-simulation:
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  deploy-aws:
     needs: build-and-test
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
-      - name: Deployment Placeholder
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region us-west-2 --name aws-prod
+
+      - name: Deploy to AWS EKS
         run: |
-          echo "Connecting to Kubernetes Cluster..."
-          echo "Running: helm upgrade api ./infra/helm/api --set image.tag=${{ github.sha }}"
-          echo "Validating rollout status..."
-          echo "Smoke tests passed."
+          helm upgrade --install api ./infra/helm/api \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api \
+            --set image.tag=${{ github.sha }} \
+            --namespace app-workload --create-namespace
+          
+          helm upgrade --install worker ./infra/helm/worker \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-worker \
+            --set image.tag=${{ github.sha }} \
+            --namespace app-workload
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/api -n app-workload --timeout=300s
+          kubectl rollout status deployment/worker -n app-workload --timeout=300s
+
+  deploy-staging:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Hetzner (Staging)
+        run: |
+          echo "Deploying to Hetzner staging cluster..."
+          # Configure kubectl for Hetzner cluster
+          echo "${{ secrets.HETZNER_KUBECONFIG }}" | base64 -d > ~/.kube/config-hetzner
+          export KUBECONFIG=~/.kube/config-hetzner
+          
+          helm upgrade --install api ./infra/helm/api \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api \
+            --set image.tag=${{ github.sha }} \
+            --set resources.requests.cpu=100m \
+            --set resources.requests.memory=128Mi \
+            --namespace app-workload --create-namespace
+
+  deploy-dev:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to OVH (Development)
+        run: |
+          echo "Deploying to OVH development cluster..."
+          echo "${{ secrets.OVH_KUBECONFIG }}" | base64 -d > ~/.kube/config-ovh
+          export KUBECONFIG=~/.kube/config-ovh
+          
+          helm upgrade --install api ./infra/helm/api \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api \
+            --set image.tag=${{ github.sha }} \
+            --set replicaCount=1 \
+            --namespace app-workload --create-namespace
+
+  integration-tests:
+    needs: [deploy-aws, deploy-staging, deploy-dev]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Run Integration Tests
+        run: |
+          echo "Running cross-cluster integration tests..."
+          # Add actual integration test commands here
+          curl -f http://api.app-workload.svc/health || exit 1
+          echo "Integration tests passed"

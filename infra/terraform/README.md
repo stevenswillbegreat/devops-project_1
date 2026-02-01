@@ -1,66 +1,50 @@
-# Terraform Infrastructure
+# Terraform Backend Configuration
 
-## Structure
+This project uses S3 backend for Terraform state management with DynamoDB for state locking.
+
+## Backend Structure
 
 ```
-terraform/
-├── modules/
-│   └── eks-cluster/          # Reusable EKS cluster module
-│       ├── main.tf
-│       ├── variables.tf
-│       ├── outputs.tf
-│       └── data.tf
-└── environments/
-    ├── dev/                  # Development environment
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   ├── outputs.tf
-    │   └── terraform.tfvars
-    └── prod/                 # Production environment
-        ├── main.tf
-        ├── variables.tf
-        ├── outputs.tf
-        └── terraform.tfvars
+S3 Bucket: devops-project-terraform-state
+├── aws-eks/terraform.tfstate          # AWS EKS cluster state
+├── hetzner-k8s/terraform.tfstate      # Hetzner Cloud cluster state
+└── ovh-k8s/terraform.tfstate          # OVH Public Cloud cluster state
+
+DynamoDB Table: terraform-state-lock    # State locking
 ```
 
-## Usage
+## Setup
 
-### Deploy Development Environment
+1. **Create Backend Infrastructure** (one-time setup):
+   ```bash
+   ./scripts/setup-terraform-backend.sh
+   ```
 
-```bash
-cd environments/dev
-terraform init
-terraform plan
-terraform apply
-```
+2. **Initialize Each Module**:
+   ```bash
+   # AWS EKS
+   cd infra/terraform
+   terraform init
 
-### Deploy Production Environment
+   # Hetzner Cloud
+   cd modules/hetzner-k8s
+   terraform init
 
-```bash
-cd environments/prod
-terraform init
-terraform plan
-terraform apply
-```
+   # OVH Public Cloud
+   cd modules/ovh-k8s
+   terraform init
+   ```
 
-## Key Differences Between Environments
+## Benefits
 
-### Development
-- Single NAT Gateway (cost savings)
-- Public cluster endpoint
-- 2 nodes (t3.medium)
-- VPC CIDR: 10.0.0.0/16
+- **State Isolation**: Each cloud provider has separate state files
+- **Concurrent Operations**: Multiple team members can work simultaneously
+- **State Locking**: Prevents concurrent modifications
+- **Versioning**: S3 versioning enables state recovery
+- **Encryption**: State files encrypted at rest
 
-### Production
-- Multiple NAT Gateways (high availability)
-- Private cluster endpoint
-- 3 nodes (t3.large)
-- VPC CIDR: 10.1.0.0/16
+## Requirements
 
-## Customization
-
-Edit the `terraform.tfvars` file in each environment to customize:
-- AWS region
-- Kubernetes version
-- Node sizes and counts
-- Network configuration
+- AWS CLI configured with appropriate permissions
+- S3 bucket creation permissions
+- DynamoDB table creation permissions
