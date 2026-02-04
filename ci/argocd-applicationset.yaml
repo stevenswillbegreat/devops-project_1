@@ -1,0 +1,170 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: multi-cloud-api
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - cluster: aws-prod
+        url: https://kubernetes.default.svc
+        environment: production
+        cloud: aws
+        replicaCount: "3"
+        cpuRequest: "500m"
+        memoryRequest: "512Mi"
+        cpuLimit: "1000m"
+        memoryLimit: "1Gi"
+        minReplicas: "3"
+        maxReplicas: "10"
+        valuesFile: values-aws-prod.yaml
+      - cluster: hetzner-staging
+        url: https://hetzner-cluster-endpoint
+        environment: staging
+        cloud: hetzner
+        replicaCount: "2"
+        cpuRequest: "200m"
+        memoryRequest: "256Mi"
+        cpuLimit: "500m"
+        memoryLimit: "512Mi"
+        minReplicas: "2"
+        maxReplicas: "5"
+        valuesFile: values-hetzner-staging.yaml
+      - cluster: ovh-dev
+        url: https://ovh-cluster-endpoint
+        environment: development
+        cloud: ovh
+        replicaCount: "1"
+        cpuRequest: "100m"
+        memoryRequest: "128Mi"
+        cpuLimit: "200m"
+        memoryLimit: "256Mi"
+        minReplicas: "1"
+        maxReplicas: "2"
+        valuesFile: values-ovh-dev.yaml
+  template:
+    metadata:
+      name: 'api-{{cluster}}'
+      labels:
+        environment: '{{environment}}'
+        cloud: '{{cloud}}'
+    spec:
+      project: multi-cloud
+      source:
+        repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+        targetRevision: main
+        path: infra/helm/api
+        helm:
+          valueFiles:
+          - '{{valuesFile}}'
+          parameters:
+          - name: replicaCount
+            value: '{{replicaCount}}'
+          - name: resources.requests.cpu
+            value: '{{cpuRequest}}'
+          - name: resources.requests.memory
+            value: '{{memoryRequest}}'
+          - name: resources.limits.cpu
+            value: '{{cpuLimit}}'
+          - name: resources.limits.memory
+            value: '{{memoryLimit}}'
+          - name: autoscaling.minReplicas
+            value: '{{minReplicas}}'
+          - name: autoscaling.maxReplicas
+            value: '{{maxReplicas}}'
+      destination:
+        server: '{{url}}'
+        namespace: app-workload
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: multi-cloud-worker
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - cluster: aws-prod
+        url: https://kubernetes.default.svc
+        environment: production
+        replicaCount: "5"
+      - cluster: hetzner-staging
+        url: https://hetzner-cluster-endpoint
+        environment: staging
+        replicaCount: "3"
+      - cluster: ovh-dev
+        url: https://ovh-cluster-endpoint
+        environment: development
+        replicaCount: "1"
+  template:
+    metadata:
+      name: 'worker-{{cluster}}'
+      labels:
+        environment: '{{environment}}'
+    spec:
+      project: multi-cloud
+      source:
+        repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+        targetRevision: main
+        path: infra/helm/worker
+        helm:
+          parameters:
+          - name: replicaCount
+            value: '{{replicaCount}}'
+      destination:
+        server: '{{url}}'
+        namespace: app-workload
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: observability-stack
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - cluster: aws-prod
+        url: https://kubernetes.default.svc
+      - cluster: hetzner-staging
+        url: https://hetzner-cluster-endpoint
+      - cluster: ovh-dev
+        url: https://ovh-cluster-endpoint
+  template:
+    metadata:
+      name: 'observability-{{cluster}}'
+    spec:
+      project: multi-cloud
+      source:
+        repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+        targetRevision: main
+        path: infra/monitoring
+      destination:
+        server: '{{url}}'
+        namespace: observability
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

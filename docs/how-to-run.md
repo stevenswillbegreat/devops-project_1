@@ -18,21 +18,29 @@ kind create cluster --config infra/kind-config.yaml --name cuegrowth
 
 ### 2. Deploy Infrastructure Components
 ```bash
-# Create namespace
-kubectl apply -f infra/namespaces.yaml
+# Create namespaces
+kubectl create namespace app-workload
+kubectl create namespace monitoring
+kubectl create namespace ci
 
-# Deploy Valkey
-helm install valkey oci://registry-1.docker.io/bitnamicharts/redis \
+# Label monitoring namespace for NetworkPolicy
+kubectl label namespace monitoring name=monitoring
+
+# Deploy Valkey (Redis)
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install valkey-redis bitnami/redis \
   --namespace app-workload \
-  --values infra/helm/valkey/values.yaml
+  --set auth.password=securepassword123 \
+  --set master.persistence.enabled=true \
+  --set replica.replicaCount=2
 
 # Deploy NATS
+helm repo add nats https://nats-io.github.io/k8s/helm/charts/
 helm install nats nats/nats \
   --namespace app-workload \
-  --values infra/helm/queue/values.yaml
-
-# Create ConfigMap and Secrets
-kubectl apply -f infra/shared-config.yaml
+  --set nats.jetstream.enabled=true \
+  --set cluster.enabled=true \
+  --set cluster.replicas=3
 ```
 
 ### 3. Build and Load Images
@@ -57,15 +65,34 @@ helm install api infra/helm/api --namespace app-workload
 helm install worker infra/helm/worker --namespace app-workload
 ```
 
-### 5. Apply Security and Operational Features
+### 5. Apply Security Features
 ```bash
-./scripts/apply-safe-improvements.sh
+# Apply NetworkPolicies
+kubectl apply -f infra/security/network-policies.yaml
+
+# Apply PodSecurityStandards
+kubectl label namespace app-workload pod-security.kubernetes.io/enforce=restricted
+
+# Verify security
+bash scripts/verify-security.sh
 ```
 
 ### 6. Deploy Observability Stack
 ```bash
-chmod +x scripts/deploy-observability.sh
-./scripts/deploy-observability.sh
+# Install Prometheus Operator stack
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+
+# Deploy ServiceMonitors
+kubectl apply -f infra/monitoring/service-monitors.yaml
+
+# Deploy Valkey exporter
+bash scripts/fix-metrics-final.sh
+
+# Create NetworkPolicy for metrics scraping
+kubectl apply -f infra/security/network-policies.yaml
 ```
 
 ### 7. Verify Deployment
@@ -76,35 +103,158 @@ kubectl get networkpolicies,pdb,hpa -n app-workload
 
 ---
 
-## Cloud Deployment (AWS EKS)
+## Cloud Deployment (Multi-Cloud)
 
-### 1. Deploy Infrastructure with Terraform
+The project supports deployment to multiple cloud providers:
+- **AWS EKS** (Primary)
+- **Hetzner Cloud** (Cost-effective alternative)
+- **OVH Public Cloud** (European option)
 
-#### Development Environment
+### Prerequisites
+
 ```bash
-cd infra/terraform/environments/dev
-terraform init
-terraform plan
-terraform apply
+# Setup Terraform backend (one-time)
+bash scripts/setup-terraform-backend.sh
+
+# Configure cloud provider credentials
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export HCLOUD_TOKEN="your-hetzner-token"  # Optional
+export OVH_APPLICATION_KEY="your-ovh-key"  # Optional
 ```
 
-#### Production Environment
+---
+
+### Option 1: AWS EKS Deployment
+
+#### 1. Deploy Infrastructure
 ```bash
-cd infra/terraform/environments/prod
+cd infra/terraform
+
+# Initialize
 terraform init
-terraform plan
-terraform apply
+
+# Review plan
+terraform plan -var="environment=dev" -var="aws_region=us-east-1"
+
+# Apply
+terraform apply -var="environment=dev" -var="aws_region=us-east-1"
 ```
 
-### 2. Configure kubectl
+#### 2. Configure kubectl
 ```bash
 aws eks update-kubeconfig --region us-east-1 --name cuegrowth-cluster
+
+# Verify connection
+kubectl get nodes
 ```
 
-### 3. Deploy Applications
+#### 3. Deploy Applications
 ```bash
 # Follow steps 2-7 from Quick Start above
 ```
+
+---
+
+### Option 2: Hetzner Cloud Deployment
+
+#### 1. Deploy Infrastructure
+```bash
+cd infra/terraform/modules/hetzner-k8s
+
+# Initialize
+terraform init
+
+# Apply
+terraform apply -var="hcloud_token=$HCLOUD_TOKEN"
+```
+
+#### 2. Configure kubectl
+```bash
+# Get kubeconfig
+terraform output -raw kubeconfig > ~/.kube/hetzner-config
+export KUBECONFIG=~/.kube/hetzner-config
+
+# Verify
+kubectl get nodes
+```
+
+#### 3. Deploy Applications
+```bash
+# Follow steps 2-7 from Quick Start above
+```
+
+---
+
+### Option 3: OVH Public Cloud Deployment
+
+#### 1. Deploy Infrastructure
+```bash
+cd infra/terraform/modules/ovh-k8s
+
+# Initialize
+terraform init
+
+# Apply
+terraform apply \
+  -var="ovh_application_key=$OVH_APPLICATION_KEY" \
+  -var="ovh_application_secret=$OVH_APPLICATION_SECRET" \
+  -var="ovh_consumer_key=$OVH_CONSUMER_KEY"
+```
+
+#### 2. Configure kubectl
+```bash
+# Get kubeconfig
+terraform output -raw kubeconfig > ~/.kube/ovh-config
+export KUBECONFIG=~/.kube/ovh-config
+
+# Verify
+kubectl get nodes
+```
+
+#### 3. Deploy Applications
+```bash
+# Follow steps 2-7 from Quick Start above
+```
+
+---
+
+### Multi-Cloud Management with ArgoCD
+
+ArgoCD can manage deployments across all clusters:
+
+```bash
+# Add AWS cluster
+argocd cluster add cuegrowth-cluster --name aws-eks
+
+# Add Hetzner cluster
+argocd cluster add hetzner-k8s --name hetzner
+
+# Add OVH cluster
+argocd cluster add ovh-k8s --name ovh
+
+# Deploy to specific cluster
+kubectl apply -f ci/argocd-api.yaml  # Uses destination.name in manifest
+```
+
+---
+
+### Terraform State Management
+
+Each cloud provider has isolated state:
+
+```
+S3 Backend Structure:
+├── aws-eks/terraform.tfstate       # AWS EKS state
+├── hetzner-k8s/terraform.tfstate   # Hetzner state
+└── ovh-k8s/terraform.tfstate       # OVH state
+```
+
+Benefits:
+- **Isolated state** per cloud provider
+- **Concurrent operations** across teams
+- **State locking** via DynamoDB
+- **Versioning** and encryption enabled
 
 ---
 
@@ -149,22 +299,36 @@ curl http://localhost:8000/metrics
 
 ### Grafana
 ```bash
-kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+# Get password
+kubectl get secret -n monitoring monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d
+
+# Port forward
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
 ```
 - URL: http://localhost:3000
 - User: admin
-- Pass: admin123
+- Pass: (from command above)
 
 ### Prometheus
 ```bash
-kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090
+kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090
 ```
 - URL: http://localhost:9090
+- Check targets: http://localhost:9090/targets
 
 ### Import Dashboard
-1. Open Grafana
-2. Go to Dashboards → Import
-3. Upload `infra/monitoring/grafana-dashboard.json`
+1. Open Grafana (http://localhost:3000)
+2. Click "+" → "Import dashboard"
+3. Upload `infra/monitoring/dashboard-working-final.json`
+4. Select "Prometheus" datasource
+5. Click "Import"
+
+Dashboard includes:
+- API Request Rate
+- Queue Backlog
+- Worker Processing Rate
+- Valkey Operations/sec
+- Pod CPU/Memory Usage
 
 ---
 
@@ -184,15 +348,23 @@ git push origin main
 
 ### ArgoCD (GitOps)
 ```bash
-# Install ArgoCD
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# Quick setup
+bash scripts/setup-argocd.sh
 
-# Deploy application
-kubectl apply -f infra/argocd-app.yaml
+# Or manual setup:
+kubectl create namespace ci
+kubectl apply -n ci -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Deploy applications
+kubectl apply -f ci/argocd-api.yaml
+kubectl apply -f ci/argocd-worker.yaml
+kubectl apply -f ci/argocd-nats.yaml
+kubectl apply -f ci/argocd-valkey.yaml
 
 # Access UI
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+bash scripts/access-argocd.sh
+# Or manually:
+kubectl port-forward svc/argocd-server -n ci 8080:443
 ```
 
 ---
@@ -230,8 +402,8 @@ kind delete cluster --name cuegrowth
 ### Cloud (EKS)
 ```bash
 # Delete Kubernetes resources
-helm uninstall api worker -n app-workload
-kubectl delete namespace app-workload monitoring
+helm uninstall api worker nats valkey-redis monitoring -n app-workload
+kubectl delete namespace app-workload monitoring ci
 
 # Destroy infrastructure
 cd infra/terraform/environments/dev
@@ -239,10 +411,6 @@ terraform destroy
 ```
 
 ---
-
-## Troubleshooting
-
-See [troubleshooting.md](troubleshooting.md) for detailed debugging guides.
 
 ### Quick Checks
 ```bash

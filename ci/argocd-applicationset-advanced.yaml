@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: git-based-deployment
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+      revision: main
+      directories:
+      - path: infra/helm/*
+  template:
+    metadata:
+      name: '{{path.basename}}'
+    spec:
+      project: multi-cloud
+      source:
+        repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: app-workload
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-generator
+  namespace: argocd
+spec:
+  generators:
+  - clusters:
+      selector:
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
+  template:
+    metadata:
+      name: '{{name}}-api'
+    spec:
+      project: multi-cloud
+      source:
+        repoURL: https://github.com/stevenswillbegreat/devops-project_1.git
+        targetRevision: main
+        path: infra/helm/api
+      destination:
+        server: '{{server}}'
+        namespace: app-workload
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
